@@ -1,7 +1,7 @@
 """
 Bulk-import customers from customers_import.csv into the Job Management API.
 
-USAGE (run from your backend folder, with venv active and the server running):
+USAGE (run from your backend folder, with venv active):
     py import_customers.py
 
 Requires the 'requests' package:
@@ -10,6 +10,7 @@ Requires the 'requests' package:
 
 import csv
 import sys
+import time
 
 try:
     import requests
@@ -17,7 +18,7 @@ except ImportError:
     print("The 'requests' package is not installed. Run: pip install requests")
     sys.exit(1)
 
-BASE_URL = "http://localhost:8000"  # change if your backend runs elsewhere
+BASE_URL = "https://job-app-backend-4o6f.onrender.com"  # your live deployed backend
 
 # --- Log in as a sales executive or admin (needed to create customers) ---
 LOGIN_PHONE = "0771234567"   # <-- change to your real sales exec / admin phone
@@ -35,6 +36,18 @@ def login():
         print("Login failed:", response.status_code, response.text)
         sys.exit(1)
     return response.json()["access_token"]
+
+
+def already_exists(name, headers):
+    """Double-check via GET, since this deployment occasionally returns a false
+    500 on POST even though the record was actually created successfully."""
+    try:
+        response = requests.get(f"{BASE_URL}/customers/", headers=headers)
+        if response.status_code == 200:
+            return any(c["name"] == name for c in response.json())
+    except requests.exceptions.RequestException:
+        pass
+    return False
 
 
 def main():
@@ -67,9 +80,9 @@ def main():
         }
 
         try:
-            response = requests.post(f"{BASE_URL}/customers/", json=payload, headers=headers)
+            response = requests.post(f"{BASE_URL}/customers/", json=payload, headers=headers, timeout=30)
         except requests.exceptions.ConnectionError:
-            print("Could not reach the backend. Is it running with --host 0.0.0.0?")
+            print("Could not reach the backend. Check the URL and that it's awake.")
             sys.exit(1)
 
         if response.status_code == 200:
@@ -81,6 +94,17 @@ def main():
         elif response.status_code == 422:
             skipped += 1
             print(f"  Skipped '{name}' — validation error: {response.json()}")
+        elif response.status_code == 500:
+            # This deployment occasionally 500s even when the record saved successfully.
+            # Double-check via GET before concluding it actually failed.
+            time.sleep(0.5)
+            if already_exists(name, headers):
+                created += 1
+                if needs_review:
+                    review_needed.append(name)
+            else:
+                failed += 1
+                print(f"  Failed '{name}' — 500, and not found on double-check")
         else:
             failed += 1
             print(f"  Failed '{name}' — {response.status_code}: {response.text}")
