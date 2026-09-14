@@ -36,11 +36,8 @@ class JobStatus(str, enum.Enum):
 
 
 def _text_enum(enum_cls):
-    """Stores enums as plain text (VARCHAR) instead of a native database enum type.
-    This matters specifically on PostgreSQL, which enforces strict native enum types
-    that require a slow ALTER TYPE migration every time a value is added or changed.
-    SQL Server never had this issue since it doesn't have native enums, but we want
-    the same easy, low-friction schema changes on Postgres going forward."""
+    """Stores enums as plain text (VARCHAR) instead of a native database enum type,
+    so future schema changes on PostgreSQL don't require a slow ALTER TYPE migration."""
     return Enum(enum_cls, values_callable=lambda x: [e.value for e in x], native_enum=False)
 
 
@@ -116,6 +113,7 @@ class Job(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
     closed_reason: Mapped[str | None] = mapped_column(String(500))
     closed_by_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    sr_attachment_path: Mapped[str | None] = mapped_column(String(500))
 
     customer: Mapped["Customer"] = relationship(back_populates="jobs")
     sales_executive: Mapped["User"] = relationship(back_populates="jobs_created")
@@ -123,6 +121,10 @@ class Job(Base):
     locations: Mapped[list["Location"]] = relationship(back_populates="job")
     jobsheets: Mapped[list["Jobsheet"]] = relationship(back_populates="job")
     notifications: Mapped[list["Notification"]] = relationship(back_populates="job")
+
+    @property
+    def has_sr_attachment(self) -> bool:
+        return bool(self.sr_attachment_path)
 
 
 class Assignment(Base):

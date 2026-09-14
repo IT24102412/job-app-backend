@@ -1,7 +1,10 @@
+import os
+import uuid
 from datetime import datetime
 from calendar import monthrange
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -29,6 +32,9 @@ from app.services.assignment_service import (
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+ATTACHMENT_UPLOAD_DIR = "uploads/sr_attachments"
+ALLOWED_ATTACHMENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
 
 
 @router.post("/", response_model=JobOut)
@@ -101,6 +107,47 @@ def get_job_assigned_technicians(
     job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     return get_assigned_technicians(job_id, db)
+
+
+@router.post("/{job_id}/upload-attachment", response_model=JobOut)
+def upload_sr_attachment(
+    job_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role(UserRole.SALES_EXECUTIVE, UserRole.ADMIN)),
+):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if file.content_type not in ALLOWED_ATTACHMENT_TYPES:
+        raise HTTPException(status_code=400, detail="Only PDF or image files (JPEG/PNG) are allowed")
+
+    os.makedirs(ATTACHMENT_UPLOAD_DIR, exist_ok=True)
+    extension = file.filename.split(".")[-1] if "." in file.filename else "dat"
+    filename = f"{job.job_number}_sr_{uuid.uuid4().hex[:8]}.{extension}"
+    file_path = os.path.join(ATTACHMENT_UPLOAD_DIR, filename)
+
+    with open(file_path, "wb") as f:
+        f.write(file.file.read())
+
+    job.sr_attachment_path = file_path
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+@router.get("/{job_id}/attachment")
+def download_sr_attachment(
+    job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.sr_attachment_path or not os.path.exists(job.sr_attachment_path):
+        raise HTTPException(status_code=404, detail="No attachment found for this job")
+
+    return FileResponse(job.sr_attachment_path)
 
 
 @router.post("/{job_id}/start", response_model=JobOut)

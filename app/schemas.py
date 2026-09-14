@@ -103,6 +103,7 @@ class JobOut(BaseModel):
     closed_at: datetime | None
     closed_reason: str | None
     closed_by_admin: bool
+    has_sr_attachment: bool
 
     class Config:
         from_attributes = True
