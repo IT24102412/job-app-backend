@@ -43,12 +43,14 @@ def create_job(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(UserRole.SALES_EXECUTIVE, UserRole.ADMIN)),
 ):
-    job = Job(**payload.model_dump())
+    # job_number is NOT NULL + unique, so we need SOME value before the first
+    # insert — use a temporary placeholder, then overwrite it with the real
+    # REF NO once we have a real, guaranteed-unique database id.
+    temp_placeholder = f"TEMP-{uuid.uuid4().hex[:12]}"
+    job = Job(**payload.model_dump(), job_number=temp_placeholder)
     db.add(job)
-    db.flush()  # assigns job.id without fully committing yet
+    db.flush()  # assigns job.id
 
-    # Generate a guaranteed-unique REF NO from the job's own database id —
-    # since IDs are auto-incrementing, no two sales execs can ever collide.
     job.job_number = f"{payload.request_type.value}-{job.id:06d}"
 
     db.commit()
