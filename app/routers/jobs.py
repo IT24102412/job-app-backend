@@ -43,12 +43,14 @@ def create_job(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(UserRole.SALES_EXECUTIVE, UserRole.ADMIN)),
 ):
-    existing = db.query(Job).filter(Job.job_number == payload.job_number).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Job number already exists")
-
     job = Job(**payload.model_dump())
     db.add(job)
+    db.flush()  # assigns job.id without fully committing yet
+
+    # Generate a guaranteed-unique REF NO from the job's own database id —
+    # since IDs are auto-incrementing, no two sales execs can ever collide.
+    job.job_number = f"{payload.request_type.value}-{job.id:06d}"
+
     db.commit()
     db.refresh(job)
     return job

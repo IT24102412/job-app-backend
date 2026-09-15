@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.models import JobStatus, JobType, ServiceType, UserRole
+from app.models import JobStatus, JobType, RequestType, ServiceType, UserRole
 
 
 def _validate_phone(value: str) -> str:
@@ -72,7 +72,7 @@ class CustomerOut(BaseModel):
 
 
 class JobCreate(BaseModel):
-    job_number: str = Field(min_length=1)
+    request_type: RequestType
     job_type: JobType
     service_type: ServiceType
     remarks: str | None = Field(default=None, max_length=500)
@@ -80,17 +80,11 @@ class JobCreate(BaseModel):
     sales_executive_id: int = Field(gt=0)
     regional_center_id: int | None = Field(default=None, gt=0)
 
-    @field_validator("job_number")
-    @classmethod
-    def validate_job_number(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Job number cannot be empty or blank")
-        return value
-
 
 class JobOut(BaseModel):
     id: int
     job_number: str
+    request_type: RequestType
     job_type: JobType
     service_type: ServiceType
     remarks: str | None

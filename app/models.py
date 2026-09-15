@@ -26,6 +26,11 @@ class ServiceType(str, enum.Enum):
     INSPECTION = "inspection"
 
 
+class RequestType(str, enum.Enum):
+    FOC = "FOC"
+    SR = "SR"
+
+
 class JobStatus(str, enum.Enum):
     CREATED = "created"
     ASSIGNED = "assigned"
@@ -99,6 +104,7 @@ class Job(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     job_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    request_type: Mapped[RequestType] = mapped_column(_text_enum(RequestType), default=RequestType.FOC)
     job_type: Mapped[JobType] = mapped_column(_text_enum(JobType), nullable=False)
     service_type: Mapped[ServiceType] = mapped_column(_text_enum(ServiceType), nullable=False)
     remarks: Mapped[str | None] = mapped_column(String(500))
