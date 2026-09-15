@@ -19,6 +19,7 @@ from app.models import (
     UserRole,
 )
 from app.services.location_service import haversine_distance_km
+from app.services.push_service import send_push_notification
 
 UPLOAD_DIR = "uploads/jobsheets"
 
@@ -93,6 +94,14 @@ def _create_assignment(job: Job, technician: Technician, db: Session) -> Assignm
 
     db.commit()
     db.refresh(assignment)
+
+    send_push_notification(
+        technician.user.push_token,
+        "New Job Assigned",
+        f"You've been assigned to job {job.job_number}",
+        {"job_id": job.id},
+    )
+
     return assignment
 
 
@@ -219,6 +228,12 @@ def _notify_admins_job_closed(job: Job, technician_names: list[str], extra_conte
     admins = db.query(User).filter(User.role == UserRole.ADMIN).all()
     for admin in admins:
         db.add(Notification(job_id=job.id, recipient_admin_id=admin.id, message=message))
+        send_push_notification(
+            admin.push_token,
+            "Job Closed",
+            f"{job.job_number} — {tech_text} — {duration_text}, {distance_text}",
+            {"job_id": job.id},
+        )
 
 
 def calculate_job_summary(job: Job, db: Session) -> dict:
@@ -265,7 +280,6 @@ def start_job(job_id: int, current_user: User, db: Session) -> Job:
 
     my_assignment.started_at = datetime.utcnow()
 
-    # The job's own overall status/started_at only moves once, on whoever starts first
     if job.status == JobStatus.ASSIGNED:
         job.status = JobStatus.STARTED
         job.started_at = datetime.utcnow()

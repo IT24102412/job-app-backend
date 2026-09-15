@@ -66,6 +66,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(120), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(_text_enum(UserRole), nullable=False)
+    push_token: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     technician_profile: Mapped["Technician | None"] = relationship(back_populates="user", uselist=False)

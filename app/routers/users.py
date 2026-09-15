@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +10,10 @@ from app.schemas import AdminResetPasswordRequest, ChangePasswordRequest, UserCr
 
 router = APIRouter(prefix="/users", tags=["users"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class PushTokenRequest(BaseModel):
+    push_token: str
 
 
 @router.post("/", response_model=UserOut)
@@ -43,6 +48,17 @@ def change_my_password(
     current_user.password_hash = pwd_context.hash(payload.new_password)
     db.commit()
     return {"detail": "Password changed successfully"}
+
+
+@router.post("/me/push-token")
+def register_push_token(
+    payload: PushTokenRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.push_token = payload.push_token
+    db.commit()
+    return {"detail": "Push token registered"}
 
 
 @router.post("/{user_id}/reset-password")
