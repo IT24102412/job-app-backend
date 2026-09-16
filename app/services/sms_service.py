@@ -19,6 +19,9 @@ def send_otp_sms(phone: str, otp_code: str) -> bool:
         print("TEXTLK_API_TOKEN not configured — cannot send SMS")
         return False
 
+    recipient = _to_textlk_format(phone)
+    print(f"Attempting to send OTP SMS to {recipient}...")
+
     try:
         response = requests.post(
             TEXTLK_API_URL,
@@ -28,14 +31,15 @@ def send_otp_sms(phone: str, otp_code: str) -> bool:
                 "Accept": "application/json",
             },
             json={
-                "recipient": _to_textlk_format(phone),
+                "recipient": recipient,
                 "sender_id": "TextLKDemo",
                 "type": "plain",
                 "message": f"Your Job Tracker password reset code is: {otp_code}. Valid for 10 minutes.",
             },
             timeout=10,
         )
+        print(f"Text.lk response: {response.status_code} — {response.text}")
         return response.status_code == 200
     except requests.exceptions.RequestException as e:
-        print(f"Failed to send OTP SMS: {e}")
+        print(f"Failed to send OTP SMS (network error): {e}")
         return False
