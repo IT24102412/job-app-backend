@@ -90,6 +90,7 @@ class JobOut(BaseModel):
     remarks: str | None
     status: JobStatus
     customer_id: int
+    customer_name: str | None
     sales_executive_id: int
     regional_center_id: int | None
     created_at: datetime
