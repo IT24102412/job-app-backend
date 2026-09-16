@@ -190,3 +190,14 @@ class Notification(Base):
 
     job: Mapped["Job"] = relationship(back_populates="notifications")
     technician: Mapped["Technician | None"] = relationship(back_populates="notifications")
+
+
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    otp_code: Mapped[str] = mapped_column(String(6), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
