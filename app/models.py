@@ -133,6 +133,10 @@ class Job(Base):
     def has_sr_attachment(self) -> bool:
         return bool(self.sr_attachment_path)
 
+    @property
+    def customer_name(self) -> str | None:
+        return self.customer.name if self.customer else None
+
 
 class Assignment(Base):
     __tablename__ = "assignments"
