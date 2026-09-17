@@ -1,15 +1,13 @@
-import os
-import uuid
 from datetime import datetime
 from calendar import monthrange
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_role
-from app.models import Assignment, Job, JobStatus, ServiceType, Technician, User, UserRole
+from app.models import Assignment, Job, Jobsheet, JobStatus, ServiceType, Technician, User, UserRole
 from app.schemas import (
     AdminCloseJobRequest,
     AssignedTechnicianOut,
@@ -33,8 +31,8 @@ from app.services.assignment_service import (
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-ATTACHMENT_UPLOAD_DIR = "uploads/sr_attachments"
 ALLOWED_ATTACHMENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
+MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024  # 8 MB
 
 
 @router.post("/", response_model=JobOut)
@@ -43,13 +41,12 @@ def create_job(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(UserRole.SALES_EXECUTIVE, UserRole.ADMIN)),
 ):
-    # job_number is NOT NULL + unique, so we need SOME value before the first
-    # insert — use a temporary placeholder, then overwrite it with the real
-    # REF NO once we have a real, guaranteed-unique database id.
+    import uuid
+
     temp_placeholder = f"TEMP-{uuid.uuid4().hex[:12]}"
     job = Job(**payload.model_dump(), job_number=temp_placeholder)
     db.add(job)
-    db.flush()  # assigns job.id
+    db.flush()
 
     job.job_number = f"{payload.request_type.value}-{job.id:06d}"
 
@@ -127,15 +124,14 @@ def upload_sr_attachment(
     if file.content_type not in ALLOWED_ATTACHMENT_TYPES:
         raise HTTPException(status_code=400, detail="Only PDF or image files (JPEG/PNG) are allowed")
 
-    os.makedirs(ATTACHMENT_UPLOAD_DIR, exist_ok=True)
-    extension = file.filename.split(".")[-1] if "." in file.filename else "dat"
-    filename = f"{job.job_number}_sr_{uuid.uuid4().hex[:8]}.{extension}"
-    file_path = os.path.join(ATTACHMENT_UPLOAD_DIR, filename)
+    file_bytes = file.file.read()
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File is too large (max 8 MB)")
 
-    with open(file_path, "wb") as f:
-        f.write(file.file.read())
+    job.sr_attachment_filename = file.filename or "attachment"
+    job.sr_attachment_content_type = file.content_type
+    job.sr_attachment_data = file_bytes
 
-    job.sr_attachment_path = file_path
     db.commit()
     db.refresh(job)
     return job
@@ -148,10 +144,38 @@ def download_sr_attachment(
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if not job.sr_attachment_path or not os.path.exists(job.sr_attachment_path):
+    if not job.sr_attachment_data:
         raise HTTPException(status_code=404, detail="No attachment found for this job")
 
-    return FileResponse(job.sr_attachment_path)
+    return Response(
+        content=job.sr_attachment_data,
+        media_type=job.sr_attachment_content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{job.sr_attachment_filename}"'},
+    )
+
+
+@router.get("/{job_id}/jobsheet")
+def download_jobsheet(
+    job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    jobsheet = (
+        db.query(Jobsheet)
+        .filter(Jobsheet.job_id == job_id)
+        .order_by(Jobsheet.uploaded_at.desc())
+        .first()
+    )
+    if not jobsheet:
+        raise HTTPException(status_code=404, detail="No job sheet found for this job")
+
+    return Response(
+        content=jobsheet.file_data,
+        media_type=jobsheet.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{jobsheet.filename}"'},
+    )
 
 
 @router.post("/{job_id}/start", response_model=JobOut)

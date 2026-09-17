@@ -1,5 +1,3 @@
-import os
-import uuid
 from datetime import datetime
 
 from fastapi import HTTPException, UploadFile
@@ -21,7 +19,7 @@ from app.models import (
 from app.services.location_service import haversine_distance_km
 from app.services.push_service import send_push_notification
 
-UPLOAD_DIR = "uploads/jobsheets"
+MAX_JOBSHEET_SIZE_BYTES = 8 * 1024 * 1024  # 8 MB
 
 
 def assign_technician_to_job(job_id: int, db: Session) -> Assignment:
@@ -303,14 +301,16 @@ def upload_jobsheet_and_close(job_id: int, file: UploadFile, current_user: User,
     if not my_assignment:
         raise HTTPException(status_code=403, detail="You are not assigned to this job")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    filename = f"{job.job_number}_{uuid.uuid4().hex[:8]}.pdf"
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    file_bytes = file.file.read()
+    if len(file_bytes) > MAX_JOBSHEET_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File is too large (max 8 MB)")
 
-    with open(file_path, "wb") as f:
-        f.write(file.file.read())
-
-    jobsheet = Jobsheet(job_id=job.id, file_url=file_path)
+    jobsheet = Jobsheet(
+        job_id=job.id,
+        filename=file.filename or "jobsheet.pdf",
+        content_type=file.content_type,
+        file_data=file_bytes,
+    )
     db.add(jobsheet)
 
     job.status = JobStatus.CLOSED

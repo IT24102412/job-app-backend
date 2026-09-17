@@ -99,6 +99,7 @@ class JobOut(BaseModel):
     closed_reason: str | None
     closed_by_admin: bool
     has_sr_attachment: bool
+    has_jobsheet: bool
 
     class Config:
         from_attributes = True
@@ -209,7 +210,7 @@ class Token(BaseModel):
 class JobsheetOut(BaseModel):
     id: int
     job_id: int
-    file_url: str
+    filename: str
     uploaded_at: datetime
 
     class Config:

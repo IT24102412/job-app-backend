@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -120,7 +120,12 @@ class Job(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
     closed_reason: Mapped[str | None] = mapped_column(String(500))
     closed_by_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    sr_attachment_path: Mapped[str | None] = mapped_column(String(500))
+
+    # Sales exec's SR attachment — stored directly in the database (not on disk),
+    # since Render's free tier disk is temporary and wipes on every restart/redeploy.
+    sr_attachment_filename: Mapped[str | None] = mapped_column(String(255))
+    sr_attachment_content_type: Mapped[str | None] = mapped_column(String(100))
+    sr_attachment_data: Mapped[bytes | None] = mapped_column(LargeBinary)
 
     customer: Mapped["Customer"] = relationship(back_populates="jobs")
     sales_executive: Mapped["User"] = relationship(back_populates="jobs_created")
@@ -131,11 +136,15 @@ class Job(Base):
 
     @property
     def has_sr_attachment(self) -> bool:
-        return bool(self.sr_attachment_path)
+        return self.sr_attachment_data is not None
 
     @property
     def customer_name(self) -> str | None:
         return self.customer.name if self.customer else None
+
+    @property
+    def has_jobsheet(self) -> bool:
+        return len(self.jobsheets) > 0
 
 
 class Assignment(Base):
@@ -171,7 +180,12 @@ class Jobsheet(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), nullable=False)
-    file_url: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Stored directly in the database (not on disk) for the same reason as SR attachments above.
+    filename: Mapped[str] = mapped_column(String(255), default="jobsheet.pdf")
+    content_type: Mapped[str] = mapped_column(String(100), default="application/pdf")
+    file_data: Mapped[bytes] = mapped_column(LargeBinary)
+
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     job: Mapped["Job"] = relationship(back_populates="jobsheets")
